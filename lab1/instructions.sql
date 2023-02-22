@@ -16,33 +16,25 @@ BEGIN
 END ;
 
 CREATE OR REPLACE FUNCTION checking_values
-RETURN VARCHAR IS res varchar(20);
-begin_value integer := 1;
-end_value integer := 10000;
-count_event PLS_INTEGER := 0;
-count_odd PLS_INTEGER := 0;
-current_number integer;
+RETURN VARCHAR IS
+odd_elements integer;
+even_elements integer;
+result varchar(5);
 BEGIN
-   FOR l_current_year IN  begin_value .. end_value
-   LOOP
-      SELECT val into current_number from myTable
-      where Id = l_current_year;
-      if (MOD(current_number,2) = 0) THEN
-        count_event := count_event+ 1;
-      else
-        count_odd := count_odd+1;
-      END iF;  
-      
-   END LOOP;
-   if(count_event > count_odd) then
-    res := 'true';
-    END if;
-   if(count_event < count_odd) then
-    res:= 'false';
-   else 
-    res:= 'equal';
-   END if;
-   return res;
+   select count(*) into odd_elements from myTable
+    where mod(val,2)=1;
+    select count(*) into even_elements from myTable
+    where mod(val,2)=0;
+    if even_elements > odd_elements then 
+        result:='true';
+        return result;
+    elsif even_elements < odd_elements then 
+        result:='false';
+        return result;  
+      elsif even_elements = odd_elements then 
+        result:='equal';
+        return result;   
+       end if; 
 END;
 
 
@@ -62,7 +54,7 @@ BEGIN
       SELECT val into inserted_val from myTable
       where Id = row_id;
       IF inserted_val IS NULL then
-        RAISE val_missing;
+        RAISE val_missing;       
       else 
         res :=  'insert into myTable (id, name) values('|| row_id ||','|| inserted_val ||')';
       end if;  
@@ -102,11 +94,6 @@ BEGIN
 end;  
   
 
-create or replace NONEDITIONABLE PROCEDURE deleteOperations (row_id in number ) IS
-BEGIN
-      delete  MyTable 
-      where id = row_id;
-END;
 
 create or replace NONEDITIONABLE PROCEDURE deleteOperations (row_id in number ) IS
 any_rows_found number;
@@ -130,7 +117,7 @@ IS
     result_value REAL;
     wrong_percent EXCEPTION;
 BEGIN   
-    IF adding_percent < 0 THEN
+    IF adding_percent < 0 or monthly_income<0 THEN
         RAISE wrong_percent;        
     END IF;        
     result_value := (1 + adding_percent/100)*12*monthly_income;
