@@ -261,3 +261,5 @@ BEGIN
 END;
     
 CALL student_rollback(TO_TIMESTAMP('23.02.23 18:42:00'));
+
+CALL student_rollback(TO_TIMESTAMP('3.06.2023 19:45:00'));
