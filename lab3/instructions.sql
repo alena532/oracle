@@ -111,3 +111,42 @@ END;
 
 exec COMPARE_SCHEMA('AUSER','PROD');
 
+
+EXECUTE IMMEDIATE 'TRUNCATE TABLE fk_tmp';
+FOR table_item IN 
+    (SELECT table_name AS name FROM all_tables 
+     WHERE OWNER = dev_schema_name
+     MINUS 
+     SELECT table_name AS name FROM ALL_TABLES
+     WHERE OWNER = prod_schema_name)
+     LOOP
+
+    INSERT INTO  fk_tmp (child_obj, parent_obj)
+        SELECT DISTINCT a.table_name, c_pk.table_name
+        FROM all_cons_columns a
+        JOIN all_constraints c ON 
+            a.OWNER = c.OWNER AND a.constraint_name = c.constraint_name
+        JOIN all_constraints c_pk ON 
+            c.r_owner = c_pk.owner AND c.r_constraint_name = c_pk.constraint_name
+            AND c_pk.table_name NOT IN (SELECT table_name FROM all_tables WHERE owner = prod_schema_name)
+        WHERE c.constraint_type = 'R' AND a.table_name = table_item.name;
+  
+    IF SQL%ROWCOUNT = 0 THEN
+      DBMS_OUTPUT.PUT_LINE('CREATE TABLE '||  prod_schema_name || '.' || table_item.name || ' AS (SELECT * FROM '  || table_item.name  || ' WHERE 1=0);');
+    END IF;
+
+    END LOOP;
+
+FOR ref_fk IN 
+    (SELECT child_obj, parent_obj, CONNECT_BY_ISCYCLE FROM fk_tmp
+    CONNECT BY NOCYCLE PRIOR PARENT_OBJ = child_obj
+    ORDER BY LEVEL
+    ) 
+    LOOP
+        IF ref_fk.CONNECT_BY_ISCYCLE = 0 THEN
+          DBMS_OUTPUT.PUT_LINE('CREATE TABLE ' || prod_schema_name || '.'  || ref_fk.child_obj  || ' AS (SELECT * FROM ' ||  ref_fk.child_obj || ' WHERE 1=0);');
+            ---dbms_output.put_line(ref_fk.child_obj);
+        ELSE
+            dbms_output.put_line('CYCLE IN TABLE' || ref_fk.child_obj);
+        END IF;
+    END LOOP;
