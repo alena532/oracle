@@ -6,6 +6,15 @@ IS
     counter2 NUMBER;
     text VARCHAR2(100);
 BEGIN
+for o in (select * from dba_tables where owner = 'PROD')
+  loop
+    execute immediate 'grant select on "' || o.owner ||  '"."' || o.table_name || '" to ALENA';
+  end loop;
+   for o in (select * from all_tab_cols where owner = 'DEV')
+    loop
+      execute immediate 'grant select on "' || o.owner || '"."' || o.table_name || '" to ALENA';
+    end loop;
+    
 -- dev tables to create or add columns in prod
 FOR res IN (Select  DISTINCT table_name from all_tab_columns where owner = dev_schema_name  and (table_name, column_name) not in
         (select table_name, column_name from all_tab_columns where owner = prod_schema_name))
@@ -140,7 +149,7 @@ FOR table_item IN
 FOR ref_fk IN 
     (SELECT child_obj, parent_obj, CONNECT_BY_ISCYCLE FROM fk_tmp
     CONNECT BY NOCYCLE PRIOR PARENT_OBJ = child_obj
-    ORDER BY LEVEL
+    ORDER BY LEVEL 
     ) 
     LOOP
         IF ref_fk.CONNECT_BY_ISCYCLE = 0 THEN
