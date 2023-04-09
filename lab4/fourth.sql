@@ -44,6 +44,37 @@ CREATE OR REPLACE PACKAGE BODY JSON_PARSER IS
         return res;
     END;
 
+    FUNCTION Make_Operation(LHS CLOB, RHS CLOB, operation CLOB) RETURN CLOB
+        IS
+    BEGIN
+        return LHS || ' ' || operation || ' ' || RHS;
+    END;
+
+    FUNCTION Get_Operation(l_object JSON_OBJECT_T) RETURN CLOB
+        IS
+        UNKNOWN_OPERATION EXCEPTION;
+        PRAGMA exception_init (UNKNOWN_OPERATION , -20001 );
+        ex        VARCHAR2(10) := 'UNKNOWN';
+        res       CLOB;
+        operation CLOB;
+    BEGIN
+        operation := UPPER(l_object.get_string('OPERATOR'));
+        res := CASE
+                   WHEN
+                       operation in ('=', '!=', '<>', '<', '>', '>=', '<=')
+                       THEN Make_Operation(Parse_Arg(l_object.get('LHS')), Parse_Arg(l_object.get('RHS')), operation)
+                   WHEN operation in ('IN', 'NOT IN') THEN Make_Operation(Parse_Arg(l_object.get('LHS')), '(' ||
+                                                                                                          Parse_Array_Args(l_object.get_array('RHS'), ', ') ||
+                                                                                                          ')',
+                                                                          operation)
+                   WHEN operation in ('EXISTS', 'NOT EXISTS')
+                       THEN operation || ' (' || Parse_Arg(l_object.get('RHS')) || ')'
+                   ELSE ex
+            END;
+        IF res = ex THEN raise_application_error(-20001, 'Unknown operation: ' || operation); END IF;
+        return res;
+    END;
+
     
 END;
 
