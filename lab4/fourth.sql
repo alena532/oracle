@@ -274,6 +274,446 @@ CREATE OR REPLACE PACKAGE BODY JSON_PARSER IS
         return res_str;
     END;
 
-    
+    FUNCTION Get_Create_Trigger_From_JSON_Object(l_object JSON_OBJECT_T) RETURN CLOB
+        IS
+        trigger_name_t  CLOB;
+        table_name_t    CLOB;
+        type_when_t     CLOB;
+        event_t         CLOB;
+        other_options_t CLOB;
+        do_t            CLOB;
+        res_str         CLOB;
+    BEGIN
+        trigger_name_t := l_object.get_string('NAME');
+        table_name_t := l_object.get_string('TABLE_NAME');
+        type_when_t := l_object.get_string('TYPE_WHEN');
+        event_t := l_object.get_string('EVENT');
+        res_str := TO_CLOB('CREATE TRIGGER ' || trigger_name_t || ' ' || type_when_t || ' ' || event_t || ' ON ' ||
+                           table_name_t);
+        IF l_object.has('OTHER_OPTIONS') = TRUE THEN
+            other_options_t := Get_OTHER_OPTIONS_TO_CLOB(l_object.get_array('OTHER_OPTIONS'));
+            res_str := CONCAT(res_str, ' ' || other_options_t);
+        END IF;
+        do_t := Parse_array_args(l_object.get_array('DO'), '; ') || '; ';
+        return res_str || chr(10) || ' BEGIN ' || chr(10) || do_t || chr(10) || ' END;' || chr(10);
+    END;
+
+    FUNCTION Get_Create_From_JSON_Object(l_object JSON_OBJECT_T) RETURN CLOB
+        IS
+        UNKNOWN_TYPE EXCEPTION;
+        PRAGMA exception_init (UNKNOWN_TYPE , -20006);
+        ex       VARCHAR2(10) := 'UNKNOWN';
+        res      CLOB;
+        type_obj CLOB;
+    BEGIN
+        type_obj := UPPER(l_object.get_string('TYPE'));
+        res := CASE type_obj
+                   WHEN 'TABLE' THEN Get_Create_Table_From_JSON_Object(l_object.get_object('VALUES'))
+                   WHEN 'SEQUENCE' THEN Get_Create_Sequence_From_JSON_Object(l_object.get_object('VALUES'))
+                   WHEN 'TRIGGER' THEN Get_Create_Trigger_From_JSON_Object(l_object.get_object('VALUES'))
+                   ELSE ex
+            END;
+        IF res = ex THEN raise_application_error(-20001, 'Unknown type: ' || type_obj); END IF;
+        return res;
+    END;
+
+    FUNCTION Get_Drop_Table_From_JSON_Object(l_object JSON_OBJECT_T) RETURN CLOB
+        IS
+        table_name_t CLOB;
+        res_str      CLOB;
+    BEGIN
+        table_name_t := l_object.get_string('NAME');
+        res_str := TO_CLOB('DROP TABLE ' || table_name_t);
+        return res_str;
+    END;
+
+    FUNCTION Get_Drop_Sequence_From_JSON_Object(l_object JSON_OBJECT_T) RETURN CLOB
+        IS
+        sequence_name_t CLOB;
+        res_str         CLOB;
+    BEGIN
+        sequence_name_t := l_object.get_string('NAME');
+        res_str := TO_CLOB('DROP SEQUENCE ' || sequence_name_t);
+        return res_str;
+    END;
+
+    FUNCTION Get_Drop_Trigger_From_JSON_Object(l_object JSON_OBJECT_T) RETURN CLOB
+        IS
+        sequence_name_t CLOB;
+        res_str         CLOB;
+    BEGIN
+        sequence_name_t := l_object.get_string('NAME');
+        res_str := TO_CLOB('DROP TRIGGER ' || sequence_name_t);
+        return res_str;
+    END;
+
+    FUNCTION Get_Drop_From_JSON_Object(l_object JSON_OBJECT_T) RETURN CLOB
+        IS
+        UNKNOWN_TYPE EXCEPTION;
+        PRAGMA exception_init (UNKNOWN_TYPE , -20006);
+        ex       VARCHAR2(10) := 'UNKNOWN';
+        res      CLOB;
+        type_obj CLOB;
+    BEGIN
+        type_obj := UPPER(l_object.get_string('TYPE'));
+        res := CASE type_obj
+                   WHEN 'TABLE' THEN Get_Drop_Table_From_JSON_Object(l_object.get_object('VALUES'))
+                   WHEN 'SEQUENCE' THEN Get_Drop_Sequence_From_JSON_Object(l_object.get_object('VALUES'))
+                   WHEN 'TRIGGER' THEN Get_Drop_Trigger_From_JSON_Object(l_object.get_object('VALUES'))
+                   ELSE ex
+            END;
+        IF res = ex THEN raise_application_error(-20001, 'Unknown type: ' || type_obj); END IF;
+        return res;
+    END;
+
+    FUNCTION Get_DML_Clob(key_t VARCHAR2, json_obj JSON_OBJECT_T) RETURN CLOB
+        IS
+        UNKNOWN_COMMAND EXCEPTION;
+        PRAGMA exception_init (UNKNOWN_COMMAND, -20003 );
+        str_exe CLOB;
+        ex      VARCHAR2(10) := 'UNKNOWN';
+    BEGIN
+        str_exe := CASE UPPER(key_t)
+                       WHEN 'SELECT' THEN Get_Select_From_JSON_Object(json_obj)
+                       WHEN 'INSERT' THEN Get_Insert_From_JSON_Object(json_obj)
+                       WHEN 'UPDATE' THEN Get_Update_From_JSON_Object(json_obj)
+                       WHEN 'DELETE' THEN Get_Delete_From_JSON_Object(json_obj)
+                       WHEN 'CREATE' THEN Get_Create_From_JSON_Object(json_obj)
+                       WHEN 'DROP' THEN Get_Drop_From_JSON_Object(json_obj)
+                       ELSE ex
+            END;
+        IF str_exe = ex THEN raise_application_error(-20003, 'Unknown command: ' || UPPER(key_t)); END IF;
+        return str_exe;
+    END;
+
+    FUNCTION Parse_Int(l_element JSON_ELEMENT_T) RETURN CLOB
+        IS
+    BEGIN
+        return REPLACE(l_element.to_string(), '"', '');
+    END;
+
+    FUNCTION Parse_Varchar2(l_element JSON_ELEMENT_T) RETURN CLOB
+        IS
+    BEGIN
+        return REPLACE(l_element.to_string(), '"', '''');
+    END;
+
+    FUNCTION Parse_Timestamp(l_element JSON_ELEMENT_T) RETURN CLOB
+        IS
+    BEGIN
+        return 'to_timestamp(' || Parse_Varchar2(l_element) || ', ''YYYY-MM-DD HH24:MI:SS'') ';
+    END;
+
+    FUNCTION Parse_Object_Args(l_object JSON_OBJECT_T) RETURN CLOB
+        IS
+        INVALID_ARGS EXCEPTION;
+        PRAGMA exception_init (INVALID_ARGS, -20001 );
+        l_key_list json_key_list;
+        res        CLOB := '';
+    BEGIN
+        IF l_object.has('TYPE') THEN
+            res := CASE UPPER(l_object.get_string('TYPE'))
+                       WHEN 'INTEGER' THEN Parse_int(l_object.get('VALUE'))
+                       WHEN 'VARCHAR2' THEN Parse_Varchar2(l_object.get('VALUE'))
+                       WHEN 'TIMESTAMP' THEN Parse_Timestamp(l_object.get('VALUE'))
+                END;
+        ELSE
+            l_key_list := l_object.get_Keys();
+            IF l_key_list.COUNT != 1 THEN
+                raise INVALID_ARGS;
+            END IF;
+            res := Get_DML_Clob(l_key_list(1), l_object.get_object(l_key_list(1)));
+        END IF;
+        return res;
+    END;
+
+    FUNCTION Parse_Arg(l_element JSON_ELEMENT_T) RETURN CLOB
+        IS
+    BEGIN
+        return CASE
+                   WHEN l_element.is_Object() = TRUE THEN Parse_Object_Args(JSON_OBJECT_T(l_element))
+                   WHEN l_element.is_Array() = TRUE THEN Parse_Array_Args(JSON_ARRAY_T(l_element), ';')
+                   ELSE REPLACE(l_element.to_string(), '"', '')
+            END;
+    END;
+END JSON_PARSER;
+
+
+--scripts
+DECLARE
+    l_object JSON_OBJECT_T;
+    cur      SYS_REFCURSOR;
+    ID       integer;
+    NAME     VARCHAR2(20);
+BEGIN
+    l_object := JSON_OBJECT_T.Parse(
+            '{
+                "SELECT": {
+                    "TABLE_NAME": "test_table",
+                    "VALUES": [
+                        "ID",
+                        "NAME"
+                    ]
+                }
+            }');
+    DBMS_OUTPUT.PUT_LINE(JSON_PARSER.Parse_Arg(l_object));
+    cur := TRY_Get_Cursor_By(l_object);
+    LOOP
+        FETCH cur INTO ID, NAME;
+        EXIT WHEN cur%notfound;
+        DBMS_OUTPUT.put_line(ID || ' ' || NAME);
+    END LOOP;
+    close cur;
+END;
+
+
+
+DECLARE
+    l_object JSON_OBJECT_T;
+    cur      SYS_REFCURSOR;
+    ID       integer;
+    VAL      VARCHAR2(20);
+BEGIN
+    l_object := JSON_OBJECT_T.Parse(
+            '{
+                "SELECT": {
+                    "TABLE_NAME": "test_table",
+                    "VALUES": [
+                        "id",
+                        "name"
+                    ],
+                    "WHERE": [
+                        {
+                            "LHS": "id",
+                            "RHS": {
+                                "TYPE": "INTEGER",
+                                "VALUE": 5
+                            },
+                            "OPERATOR": "="
+                        },
+                        {
+                            "SEPARATOR": "OR"
+                        },
+                        {
+                            "OPERATOR": "EXISTS",
+                            "RHS": {
+                                "SELECT": {
+                                    "TABLE_NAME": "test_table",
+                                    "VALUES": [
+                                        "NAME"
+                                    ],
+                                    "WHERE": [
+                                        {
+                                            "LHS": "NAME",
+                                            "RHS": [
+                                                {
+                                                    "TYPE": "VARCHAR2",
+                                                    "VALUE": "check"
+                                                },
+                                                {
+                                                    "TYPE": "VARCHAR2",
+                                                    "VALUE": "bruh"
+                                                }
+                                            ],
+                                            "OPERATOR": "IN"
+                                        }
+                                    ]
+                                }
+                            }
+                        }
+                    ]
+                }
+            }');
+    DBMS_OUTPUT.PUT_LINE(JSON_PARSER.Parse_Arg(l_object));
+    cur := TRY_Get_Cursor_By(l_object);
+    LOOP
+        FETCH cur INTO ID, VAL;
+        EXIT WHEN cur%notfound;
+        DBMS_OUTPUT.put_line(ID || ' ' || val);
+    END LOOP;
+    close cur;
+END;
+
+DECLARE
+    l_object JSON_OBJECT_T;
+    cur      SYS_REFCURSOR;
+BEGIN
+    l_object := JSON_OBJECT_T.Parse(
+            '{
+        "INSERT": {
+            "TABLE_NAME": "test_table",
+            "VALUES": {
+                "NAME": {
+                    "VALUE": "check",
+                    "TYPE": "VARCHAR2"
+                }
+            }
+        }
+    }');
+    DBMS_OUTPUT.PUT_LINE(JSON_PARSER.Parse_Arg(l_object));
+    cur := Try_Get_Cursor_By(l_object);
+    close cur;
+END;
+
+
+DECLARE
+    l_object JSON_OBJECT_T;
+    cur      SYS_REFCURSOR;
+BEGIN
+    l_object := JSON_OBJECT_T.Parse(
+            '{
+                "UPDATE": {
+                    "TABLE_NAME": "test_table",
+                    "VALUES": [
+                        {
+                            "LHS": "NAME",
+                            "RHS": {
+                                "VALUE": "BRUH",
+                                "TYPE": "VARCHAR2"
+                            }
+                        }
+                    ],
+                    "WHERE":[
+                        {
+                            "LHS": "ID",
+                            "RHS": {
+                                "VALUE": 1,
+                                "TYPE": "INTEGER"
+                            },
+                            "OPERATOR": "="
+                        }
+                    ]
+                }
+            }');
+    cur := Try_Get_Cursor_By(l_object);
+    close cur;
+END;
+
+
+
+DECLARE
+    l_object JSON_OBJECT_T;
+    cur      SYS_REFCURSOR;
+BEGIN
+    l_object := JSON_OBJECT_T.Parse(
+            '{
+                "DELETE": {
+                    "TABLE_NAME": "MyTable"
+                }
+            }');
+    DBMS_OUTPUT.PUT_LINE('check');
+    cur := Try_Get_Cursor_By(l_object);
+    close cur;
+END;
+
+
+DECLARE
+    l_object JSON_OBJECT_T;
+    cur      SYS_REFCURSOR;
+BEGIN
+    l_object := JSON_OBJECT_T.Parse(
+            '{
+                "START":[
+                    {
+                        "CREATE": {
+                            "TYPE": "TABLE",
+                            "VALUES": {
+                                "NAME": "test_table",
+                                "COLUMS": [
+                                    {
+                                        "NAME": "ID",
+                                        "TYPE": "INTEGER",
+                                        "OTHER": [
+                                            "NOT NULL"
+                                        ]
+                                    },
+                                    {
+                                        "NAME": "NAME",
+                                        "TYPE": "VARCHAR(20)"
+                                    }
+                                ]
+                            }
+                        }
+                    },
+                    {
+                        "CREATE": {
+                            "TYPE": "SEQUENCE",
+                            "VALUES": {
+                                "NAME": "test_table_seq"
+                            }
+                        }
+                    },
+                    {
+                        "CREATE": {
+                            "TYPE": "TRIGGER",
+                            "VALUES": {
+                                "NAME": "test_table_trigger",
+                                "TYPE_WHEN": "Before",
+                                "EVENT": "insert",
+                                "TABLE_NAME": "test_table",
+                                "OTHER_OPTIONS": [
+                                    "FOR EACH ROW"
+                                ],
+                            "DO": [
+                                {
+                                    "SELECT": {
+                                        "TABLE_NAME": "dual",
+                                        "VALUES": [
+                                            "test_table_seq.NEXTVAL"
+                                        ],
+                                        "INTO": [
+                                            ":new.id"
+                                        ]
+                                    }
+                                }
+                            ]
+                            }
+                        }
+                    }
+                ]
+            }');
+    DBMS_OUTPUT.PUT_LINE('check');
+    cur := Try_Get_Cursor_By(l_object);
+    close cur;
+END;
+
+DECLARE
+    l_object JSON_OBJECT_T;
+    cur      SYS_REFCURSOR;
+BEGIN
+    l_object := JSON_OBJECT_T.Parse(
+            '{
+                "START":[
+                    {
+                        "DROP": {
+                            "TYPE": "TRIGGER",
+                            "VALUES": {
+                                "NAME": "test_table_trigger"
+                            }
+                        }
+                    },
+                    {
+                        "DROP": {
+                            "TYPE": "TABLE",
+                            "VALUES": {
+                                "NAME": "test_table"
+                            }
+                        }
+                    },
+                    {
+                        "DROP": {
+                            "TYPE": "SEQUENCE",
+                            "VALUES": {
+                                "NAME": "test_table_seq"
+                            }
+                        }
+                    }
+                ]
+            }');
+    cur := Try_Get_Cursor_By(l_object);
+    close cur;
+END;
+
+
 END;
 
