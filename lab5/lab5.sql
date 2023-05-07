@@ -52,3 +52,29 @@ CREATE TABLE LOG_STUDENTS
     group_id  NUMBER,
     tm        TIMESTAMP   NOT NULL
 );
+CREATE OR REPLACE TRIGGER LOG_FC_INS
+    AFTER INSERT
+    ON FACULTIES
+    FOR EACH ROW
+BEGIN
+    INSERT INTO LOG_FACULTIES(operation, id, new_name, old_name, date_founded, tm)
+    VALUES ('INSERT', :new.id, NULL, NULL, NULL, current_timestamp);
+END;
+
+CREATE OR REPLACE TRIGGER LOG_FC_UPD
+    AFTER UPDATE
+    ON FACULTIES
+    FOR EACH ROW
+BEGIN
+    INSERT INTO LOG_FACULTIES(operation, id, new_name, old_name, date_founded, tm)
+    VALUES ('UPDATE', :new.id, :new.name, :old.name, NULL, current_timestamp);
+END;
+
+CREATE OR REPLACE TRIGGER LOG_FC_DEL
+    AFTER DELETE
+    ON FACULTIES
+    FOR EACH ROW
+BEGIN
+    INSERT INTO LOG_FACULTIES(operation, id, new_name, old_name, date_founded, tm)
+    VALUES ('DELETE', :old.id, :old.name, NULL, :old.date_founded, current_timestamp);
+END;
