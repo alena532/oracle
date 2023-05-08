@@ -78,3 +78,60 @@ BEGIN
     INSERT INTO LOG_FACULTIES(operation, id, new_name, old_name, date_founded, tm)
     VALUES ('DELETE', :old.id, :old.name, NULL, :old.date_founded, current_timestamp);
 END;
+
+CREATE OR REPLACE TRIGGER LOG_GR_INS
+    AFTER INSERT
+    ON GROUPS
+    FOR EACH ROW
+BEGIN
+    INSERT INTO LOG_GROUPS(operation, id, new_name, old_name, faculty_id, tm)
+    VALUES ('INSERT', :new.id, NULL, NULL, NULL, current_timestamp);
+END;
+
+CREATE OR REPLACE TRIGGER LOG_GR_UPD
+    AFTER UPDATE
+    ON GROUPS
+    FOR EACH ROW
+BEGIN
+    INSERT INTO LOG_GROUPS(operation, id, new_name, old_name, faculty_id, tm)
+    VALUES ('UPDATE', :new.id, :new.name, :old.name, NULL, current_timestamp);
+END;
+
+CREATE OR REPLACE TRIGGER LOG_GR_DEL
+    AFTER DELETE
+    ON GROUPS
+    FOR EACH ROW
+BEGIN
+    INSERT INTO LOG_GROUPS(operation, id, new_name, old_name, faculty_id, tm)
+    VALUES ('DELETE', :old.id, :old.name, NULL, :old.faculty_id, current_timestamp);
+END;
+
+--log students
+
+CREATE OR REPLACE TRIGGER LOG_ST_INS
+    AFTER INSERT
+    ON STUDENTS
+    FOR EACH ROW
+BEGIN
+    INSERT INTO LOG_STUDENTS(operation, id, new_name, old_name, group_id, tm)
+    VALUES ('INSERT', :new.id, NULL, NULL, NULL, current_timestamp);
+END;
+
+CREATE OR REPLACE TRIGGER LOG_ST_UPD
+    AFTER UPDATE
+    ON STUDENTS
+    FOR EACH ROW
+BEGIN
+    INSERT INTO LOG_STUDENTS(operation, id, new_name, old_name, group_id, tm)
+    VALUES ('UPDATE', :new.id, :new.name, :old.name, NULL, current_timestamp);
+END;
+
+CREATE OR REPLACE TRIGGER LOG_ST_DEL
+    AFTER DELETE
+    ON STUDENTS
+    FOR EACH ROW
+BEGIN
+    INSERT INTO LOG_STUDENTS(operation, id, new_name, old_name, group_id, tm)
+    VALUES ('DELETE', :old.id, :old.name, NULL, :old.group_id, current_timestamp);
+END;
+
